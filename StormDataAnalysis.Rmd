@@ -1,0 +1,126 @@
+---
+title: "NOOA Storm Data Analysis - Which Events Hurt Most"
+output: html_document
+---
+## Synopsis
+
+This analysis explores the Storm data of NOOA and tries to address two questions:
+
+1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+## Data Processing
+
+
+```{r packagePrep, message=FALSE}
+library(knitr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+```{r setOptions, echo=FALSE}
+opts_chunk$set(echo = TRUE, results = "asis")
+```
+
+The dataset for this analysis is hosted on the course website: 
+[Link to Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+
+For this analysis, it is downloaded and saved into the subfolder **data** of my working folder. From here, this dataset is analyzed using R.
+
+1. Load the data into a data frame and examine the structure
+```{r loadData, cache=TRUE}
+dfStorm <- read.csv("./data/repdata-data-StormData.csv.bz2",
+                   stringsAsFactors = F)
+```
+
+2. According to the questions targeted, keep only the fields most relevant to this analyis, i.e. 
+
+* `BGN_DATE`, the date when the event began
+* `EVTYPE`, the type of natural event
+* `FATALITIES`, the number of lives lost caused by the event
+* `INJURIES`, the number of injuries caused by the event
+* `PROPDMG`, the dollar amount of property damage
+* `PROPDMGEXP`, the exponential symbol for property damage dollar amount 
+* `CROPDMG`, the dollar amount of crop damage
+* `CROPDMGEXP`, the exponential symbol for crop damage dollar amount 
+  
+```{r transformData}
+dfStorm <- dfStorm %>% 
+    tbl_df() %>% # tbl data frame format which works better with dplyr 
+    select(BGN_DATE, EVTYPE, 
+           FATALITIES, INJURIES, 
+           PROPDMG, PROPDMGEXP, 
+           CROPDMG, CROPDMGEXP)
+           
+```
+
+3. Explore the data completeness along the time and select a representative period 
++ Convert `BGN_DATE` field into right date format in R and create
+
+```{r convertDate}
+dfStorm$BGN_DATE <- mdy_hms(dfStorm$BGN_DATE)
+dfStorm$YEAR <-as.factor(year(dfStorm$BGN_DATE))
+```
+
++ Examine the number of records per year with a plot
+```{r plotbyYear}
+plot(dfStorm$YEAR, 
+     xlab = "Year of Event",
+     ylab = "Events Recorded")
+
+```
+   
+  The plot indicates that earlier years have limited events recorded while later years have more complete records.
+20,000 events per year can be set as a cutoff point.  
+
++ Choose the years whose nubmer of recorded events is above 20,000 per year 
+
+```{r filterbyYear}
+okYear <- dfStorm %>% 
+    group_by(YEAR) %>%
+    summarize(N = n()) %>%
+    filter(N>20000) %>%
+    select(YEAR) %>%
+    unlist()
+
+dfStorm <- dfStorm %>% 
+    filter(YEAR %in% okYear)
+```
+
+4. Align crop and property damages dollar amounts into USD millions based on symbols in `PROPDMGEXP` or `CROPDMGEXP` fields, i.e. 
++ 'K' meaning thousands, hence to be divided by 1000 
++ 'M' meaning millions, hence no change
++ 'B' meaning billions, hence to be multiplied by 1000
++ other symbols considered to be unclean data hence zero
+```{r convertEXP}
+dfStorm <- dfStorm %>%
+    mutate(PROPDMG = )
+```
+
+
+5. Group the data by event type `EVTYPE`
+dfStorm <- dfStorm %>% 
+    group_by(EVTYPE)
+## Results 
+
+To simplify the measure for human population health, I make an assumption that an injury is equavalent to half a fatality. Hence the new proxy measure `HealthImpact = Fatality + 0.5 * Injury` is introduced and calculated
+
+```{r analysis1}
+dfHealth <- dfStorm %>% 
+    summarize(Fatality = sum(FATALITIES), 
+              Injury = sum(INJURIES),
+              HealthImpact = Fatality + 0.5 * Injury) %>%
+    filter(HealthImpact > 0) %>% 
+    arrange(desc(HealthImpact))
+```
+
+```{r analysis2}
+dfEconomy <- dfStorm %>%
+    summarize(Crop = sum(CROPDMG), 
+              Property = sum(PROPDMG),
+              Total = Crop + Property) %>%
+    filter(Total > 0) %>%
+    arrange(desc(Total), desc(Crop))
+```
