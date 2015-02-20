@@ -85,8 +85,7 @@ okYear <- dfStorm %>%
     select(YEAR) %>%
     unlist()
 
-dfStorm <- dfStorm %>% 
-    filter(YEAR %in% okYear)
+dfStorm <- dfStorm[dfStorm$YEAR %in% okYear, ]
 ```
 
 4. Align crop and property damages dollar amounts into USD millions based on symbols in `PROPDMGEXP` or `CROPDMGEXP` fields, i.e. 
@@ -95,15 +94,24 @@ dfStorm <- dfStorm %>%
 + 'B' meaning billions, hence to be multiplied by 1000
 + other symbols considered to be unclean data hence zero
 ```{r convertEXP}
-dfStorm <- dfStorm %>%
-    mutate(PROPDMG = )
+mPROP <- as.vector(sapply(dfStorm$PROPDMGEXP, switch, K = 0.001, M = 1, B = 1000, 0))
+mCROP <- as.vector(sapply(dfStorm$CROPDMGEXP, switch, K = 0.001, M = 1, B = 1000, 0))
+
+dfStorm$PROPDMG <- dfStorm$PROPDMG * mPROP
+dfStorm$CROPDMG <- dfStorm$CROPDMG * mPROP
 ```
 
 
+
 5. Group the data by event type `EVTYPE`
+```{r}
 dfStorm <- dfStorm %>% 
     group_by(EVTYPE)
+```
+    
+    
 ## Results 
+
 
 To simplify the measure for human population health, I make an assumption that an injury is equavalent to half a fatality. Hence the new proxy measure `HealthImpact = Fatality + 0.5 * Injury` is introduced and calculated
 
