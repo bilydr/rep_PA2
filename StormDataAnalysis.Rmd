@@ -4,14 +4,9 @@ output: html_document
 ---
 ## Synopsis
 
-This analysis explores the Storm data of NOOA and tries to address two questions:
-
-1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
-
-2. Across the United States, which types of events have the greatest economic consequences?
+This analysis explores the Storm data of NOOA and tries to identify the most harmful types of events across the United States (1) with respect to population health and (2) with the greatest economic consequences. As the results, it is found that Tornado brings most damage to population health, followed by Excessive Heat, Flood, and Lighting, while Flood causes most important economic consequences followed by Hurricane/Typhoon and Storm Surge.
 
 ## Data Processing
-
 
 ```{r packagePrep, message=FALSE}
 library(knitr)
@@ -24,16 +19,25 @@ library(ggplot2)
 opts_chunk$set(echo = TRUE, results = "asis")
 ```
 
-The dataset for this analysis is hosted on the course website: 
-[Link to Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+From the [course website](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) I
+downloaded the data file in bz2 format and saved it into the subfolder **data** of my working folder. 
 
-For this analysis, it is downloaded and saved into the subfolder **data** of my working folder. From here, this dataset is analyzed using R.
-
-1. Load the data into a data frame and examine the structure
+1. Read in the data and examine the structure
 ```{r loadData, cache=TRUE}
 dfStorm <- read.csv("./data/repdata-data-StormData.csv.bz2",
                    stringsAsFactors = F)
 ```
+
+Check the dimensions of this dataset
+```{r}
+dim(dfStorm)
+```
+
+Check the variables contained
+```{r}
+names(dfStorm)
+```
+
 
 2. According to the questions targeted, keep only the fields most relevant to this analyis, i.e. 
 
@@ -61,15 +65,20 @@ dfStorm <- dfStorm %>%
 
 ```{r convertDate}
 dfStorm$BGN_DATE <- mdy_hms(dfStorm$BGN_DATE)
-dfStorm$YEAR <-as.factor(year(dfStorm$BGN_DATE))
+dfStorm$YEAR <-as.integer(year(dfStorm$BGN_DATE))
 ```
 
 + Examine the number of records per year with a plot
-```{r plotbyYear}
-plot(dfStorm$YEAR, 
-     xlab = "Year of Event",
-     ylab = "Events Recorded")
-
+```{r plotbyYear, fig.width=10}
+ggplot(dfStorm, 
+       aes(x = factor(YEAR))) + 
+    geom_bar(fill = "navyblue") +
+    labs(x = "Year",
+         y = "Number of Events",
+         title = "Figure 1\nNumber of Events per Year") +
+    scale_x_discrete(breaks=seq(from = min(dfStorm$YEAR), 
+                                to = max(dfStorm$YEAR), 
+                                by = 3))
 ```
    
   The plot indicates that earlier years have limited events recorded while later years have more complete records.
@@ -79,13 +88,13 @@ plot(dfStorm$YEAR,
 
 ```{r filterbyYear}
 okYear <- dfStorm %>% 
-    group_by(YEAR) %>%
-    summarize(N = n()) %>%
-    filter(N>20000) %>%
-    select(YEAR) %>%
-    unlist()
+    group_by(YEAR) %>% # by year
+    summarize(N = n()) %>% # count events
+    filter(N>20000) %>% # set threshold as 20000
+    select(YEAR) %>% # get the year column
+    unlist() # convert into a vector
 
-dfStorm <- dfStorm[dfStorm$YEAR %in% okYear, ]
+dfStorm <- dfStorm[dfStorm$YEAR %in% okYear, ] # subset the data by years
 ```
 
 4. Align crop and property damages dollar amounts into USD millions based on symbols in `PROPDMGEXP` or `CROPDMGEXP` fields, i.e. 
@@ -94,41 +103,78 @@ dfStorm <- dfStorm[dfStorm$YEAR %in% okYear, ]
 + 'B' meaning billions, hence to be multiplied by 1000
 + other symbols considered to be unclean data hence zero
 ```{r convertEXP}
-mPROP <- as.vector(sapply(dfStorm$PROPDMGEXP, switch, K = 0.001, M = 1, B = 1000, 0))
-mCROP <- as.vector(sapply(dfStorm$CROPDMGEXP, switch, K = 0.001, M = 1, B = 1000, 0))
 
-dfStorm$PROPDMG <- dfStorm$PROPDMG * mPROP
-dfStorm$CROPDMG <- dfStorm$CROPDMG * mPROP
+mPROP <- as.vector(sapply(dfStorm$PROPDMGEXP, 
+                          switch, 
+                          K = 0.001, 
+                          M = 1, 
+                          B = 1000, 
+                          0)) # this is the value for other symbols
+mCROP <- as.vector(sapply(dfStorm$CROPDMGEXP, 
+                          switch, 
+                          K = 0.001, 
+                          M = 1, 
+                          B = 1000, 
+                          0))
+
+dfStorm$PROPDMG <- dfStorm$PROPDMG * mPROP 
+dfStorm$CROPDMG <- dfStorm$CROPDMG * mCROP 
 ```
 
-
-
-5. Group the data by event type `EVTYPE`
-```{r}
-dfStorm <- dfStorm %>% 
-    group_by(EVTYPE)
-```
     
     
 ## Results 
 
-
 To simplify the measure for human population health, I make an assumption that an injury is equavalent to half a fatality. Hence the new proxy measure `HealthImpact = Fatality + 0.5 * Injury` is introduced and calculated
 
-```{r analysis1}
+```{r analyseQ1}
 dfHealth <- dfStorm %>% 
+    group_by(EVTYPE) %>%
     summarize(Fatality = sum(FATALITIES), 
               Injury = sum(INJURIES),
               HealthImpact = Fatality + 0.5 * Injury) %>%
     filter(HealthImpact > 0) %>% 
     arrange(desc(HealthImpact))
+
 ```
 
-```{r analysis2}
+
+```{r plotQ1}
+ggplot(dfHealth[1:15,], 
+       aes(x = reorder(EVTYPE,
+                      HealthImpact),
+           y = HealthImpact)) + 
+    geom_bar(stat = "identity", fill = "Darkred") +
+    coord_flip() +
+    labs (x = "Event Type",
+          y = "Impact on Health (Fatalities + 0.5 * Injuries)", 
+          title = "Figure2\nTop 15 Harmful Events by Impact on Health\n") 
+```
+
+
+**It shows that the most harmful event in terms of wrecking damage to population health is Tornado. Following that are Excessive heat, Flood and Lightning.**
+
+```{r analyzeQ2}
 dfEconomy <- dfStorm %>%
+    group_by(EVTYPE) %>%
     summarize(Crop = sum(CROPDMG), 
               Property = sum(PROPDMG),
               Total = Crop + Property) %>%
     filter(Total > 0) %>%
     arrange(desc(Total), desc(Crop))
 ```
+
+
+```{r plotQ2}
+ggplot(dfEconomy[1:15,], 
+       aes(x = reorder(EVTYPE,
+                      Total),
+           y = Total)) + 
+    geom_bar(stat = "identity", fill = "Darkorange") +
+    coord_flip() +
+    labs (x = "Event Type",
+          y = "Impact on Economy (USD Millions)", 
+          title = "Figure 3\nTop 15 Harmful Events by Impact on Economy\n") 
+```
+
+**It shows that the most harmful event in terms of wrecking damage to crops and properties is Flood. Following that are Hurricane/Typhoon and Storm Surge.**
